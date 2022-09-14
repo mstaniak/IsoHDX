@@ -1,0 +1,21 @@
+Package: IsoHDX
+Title: Tools For Isotopic Distribution-Based High Resolution Analysis of HDX Data
+Version: 0.0.0.9000
+Authors@R: 
+    c(person("Matuesz", "Staniak", , "mtst@mstaniak.pl", role = c("aut", "cre")),
+      person("Jurgen", "Claesen", role = "aut"),
+      person("Tomasz", "Burzykowski", role = "aut"))
+Description: This package provides tools for high resolution analysis of HDX-MS data
+  that consists of many overlapping peptides. Based on isotopic distributions of peptides,
+  we estimates exchange probabilities for overlapped sub-sequences.
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.1
+Imports: 
+    BRAIN,
+    data.table,
+    pracma
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

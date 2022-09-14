@@ -1,0 +1,73 @@
+---
+title: "Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(IsoHDX)
+```
+
+
+```{r }
+# # Peptide
+# peptide_sequence = "AMEPEMEK"
+# # Segments
+# segments = c("AMEPEM", "EK")
+# nums_exchangeable = c(4, 1)
+# betas_init = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2)
+# time = 5
+# getProbabilitiesFromBetas(betas_init, time)
+# 
+# # For testing:
+# segment_data_one = unique(segment_data[3:4, .(Segment, Start, End, MaxUptake)])
+# by_segment_probabilities = list(getProbabilitiesFromBetas(betas_init[1:4], time), 
+#                                 getProbabilitiesFromBetas(betas_init[6], time))
+# lapply(by_segment_probabilities, sum)
+# res = getExchangeProbabilities(segment_data_one, by_segment_probabilities, FALSE)
+# sum(res$Probability)
+# 
+# # run brain_test.R first
+# fake_seg_pept = data.table(
+#   Sequence = c(rep("TLRRMRKVVNIIN", 2), 
+#                rep("MRKVVNIINAMEPEM", 2),
+#                rep("AMEPEMEK", 2)),
+#   Segment = rep(unique(cl1_small$Segment), times = c(1, 2, 2, 1))
+# )
+# cl1_2 = merge(unique(cl1_small[, .(Segment, Start, End, MaxUptake)]),
+#               fake_seg_pept, by = "Segment")
+# cl1_2 = cl1_2[order(Start)]
+# 
+# cl1_2
+# 
+# peptides_cluster = copy(cl1_2)
+# 
+# times = c(0.1, 1, 5)
+# 
+# betas_init = c(rep(0.2, 3),
+#                rep(0.3, 8),
+#                rep(0.4, 4), 
+#                rep(0.5, 1))
+# 
+# test_heights = getExpectedSpectra(spectra, peptides_cluster,
+#                                   c(0.1, 1, 5), betas_init)
+# test_heights[[1]][[1]]
+# 
+# observed_spectra = spectra
+# 
+# observed_spectra[Peptide == "AMEPEMEK" & Time == 5.0, sum(Intensity)]
+# test_heights[[3]][[3]][, sum(ExpectedPeak)]
+# 
+# 
+# getOptimizationProblem(observed_spectra, peptides_cluster, times, betas_init)
+```
