@@ -8,18 +8,80 @@
 #' 
 getOptimizationProblem = function(observed_spectra,
                                   peptides_cluster,
-                                  times) {
-  to_optimize = function(betas) {
+                                  times, max_peaks = 10,
+                                  weights = 1) {
+  monoisotopic_masses = getMonoisotopicMasses(peptides_cluster, max_peaks)
+  observed_spectra_peakid = getPeakIds(observed_spectra, monoisotopic_masses)
+  # previous_peaks <<- 1
+  
+  function(betas) {
     theoretical_spectra = getExpectedSpectra(observed_spectra,
                                              peptides_cluster,
                                              times, betas)
-    theoretical_spectra = rbindlist(unlist(theoretical_spectra, FALSE, FALSE))
-    setnames(theoretical_spectra, "Sequence", "Peptide")
-    compare = merge(theoretical_spectra, observed_spectra,
-                    by = c("Peptide", "Time", "Mass")) # does not work as expected
-    sum(((compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2)
+    theoretical_spectra = data.table::rbindlist(unlist(theoretical_spectra, FALSE, FALSE))
+    theoretical_spectra = theoretical_spectra[order(Peptide, Time, Mass)]
+    theoretical_spectra[, PeakId := 1:.N,  by = c("Peptide", "Time")]
+    data.table::setnames(theoretical_spectra, "Peptide", "Peptide")
+    compare = merge(theoretical_spectra, observed_spectra_peakid,
+                    by = c("Peptide", "Time", "PeakId"),
+                    all.x = T, all.y = T)
+    # compare = compare[!is.na(Intensity)]
+    # crit = (previous_peaks * (compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2
+    # crit = ifelse(is.nan(crit), 0, crit)
+    # res = sum(crit, na.rm = TRUE)
+    # weights <- ifelse(is.finite(1 / sqrt(compare[["ExpectedPeak"]])),
+    #                    1 / sqrt(compare[["ExpectedPeak"]]),
+    #                    0)
+    # weights <- ifelse(is.nan(weights), 0, weights)
+    # previous_peaks <<- weights
+    # res
+    sum( (weights * (compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2,
+         na.rm = TRUE)
   }
-  to_optimize
+}
+
+
+getPeakIds = function(observed_spectra, monoisotopic_masses) {
+  data.table::rbindlist(
+    lapply(
+      split(observed_spectra, observed_spectra[, .(Peptide, Time)]),
+      function(x) {
+        mono_info = monoisotopic_masses[Peptide == unique(x$Peptide)]
+        num_peaks = mono_info$NumExchangeable + mono_info$UndeuteratedLength
+        which_peak = guess_peak(mono_info$Monoisotopic, num_peaks, x$Mass)
+        peak_id = which_peak:(nrow(x) + which_peak - 1)
+        x = x[order(Mass)]
+        x$PeakId = peak_id
+        x = merge(x, data.table::data.table(Peptide = mono_info$Peptide,
+                                            Time = unique(x$Time),
+                                            PeakId = 1:num_peaks),
+                  by = c("PeakId", "Peptide", "Time"), all.x = TRUE, all.y = TRUE)
+        x[, Mass := ifelse(is.na(Mass), mono_info$Monoisotopic + PeakId - 1, Mass)]
+        x[, Peptide := Peptide]
+        x
+      }
+    )
+  )
+}
+
+guess_peak = function(mono, num_peaks, masses) {
+  which.min(abs(min(masses) - (unique(mono) + 0:unique(num_peaks))))
+}
+
+getMonoisotopicMasses = function(peptides_cluster, max_peaks = 10) {
+  peptides_info = peptides_cluster[, .(NumExchangeable = sum(MaxUptake)), 
+                                   by = "Peptide"]
+  data.table::rbindlist(
+    lapply(
+      split(peptides_info, peptides_info$Peptide),
+      function(x) {
+        iso_dist = BRAIN::useBRAIN(BRAIN::getAtomsFromSeq(x$Peptide), 
+                                   nrPeaks = max_peaks)
+        iso_dist$isoDistr = iso_dist$isoDistr / sum(iso_dist$isoDistr)
+        cbind(x,
+              Monoisotopic = iso_dist$monoisotopic,
+              UndeuteratedLength = length(iso_dist$isoDistr))
+      }))
 }
 
 
@@ -33,19 +95,19 @@ getExpectedSpectra = function(spectra,
                               times, betas) {
   segments = unique(peptides_cluster[, .(Segment, Start, End, MaxUptake)])
   peptides_cluster[, Present := 1]
-  ps_m = dcast(peptides_cluster, Sequence ~ Segment, value.var = "Present", fill = 0)
+  ps_m = data.table::dcast(peptides_cluster, Peptide ~ Segment, value.var = "Present", fill = 0)
+  ps_m = ps_m[, c("Peptide", segments$Segment), with = FALSE]
   num_parameters = segments[["MaxUptake"]]
-  num_time_points = length(times)
-  
+
   expected_peak_heights = lapply(
-    unique(peptides_cluster[["Sequence"]]),
+    unique(peptides_cluster[["Peptide"]]),
     function(peptide) {
-      undeuterated_dist_raw = useBRAIN(getAtomsFromSeq(peptide), nrPeaks = 10)
+      undeuterated_dist_raw = BRAIN::useBRAIN(getAtomsFromSeq(peptide), nrPeaks = 10)
       undeuterated_dist = undeuterated_dist_raw[["isoDistr"]]
       undeuterated_dist = undeuterated_dist / sum(undeuterated_dist) # cheating
       monoisotopic = undeuterated_dist_raw[["monoisotopicMass"]]
       
-      present_segments = as.logical(ps_m[Sequence == peptide, -1, with = FALSE]) 
+      present_segments = as.logical(ps_m[Peptide == peptide, -1, with = FALSE]) 
       segment_probabilities = makeSegmentProbabilities(betas,
                                                        times, 
                                                        num_parameters,
@@ -55,19 +117,19 @@ getExpectedSpectra = function(spectra,
       lapply(seq_along(times), function(i) {
         time = times[i]
         probs = segment_probabilities[[i]]
-        peptide_probabilities = getExchangeProbabilities(peptides_cluster[Sequence == peptide,
-                                                                          .(Segment, Start, End, MaxUptake)],
-                                                         probs, FALSE)
+        peptide_probabilities = getExchangeProbabilities(probs,
+                                                         num_exchangeable,
+                                                         FALSE)
         spectrum = spectra[Peptide == peptide & Time == time]
         
         peak_heights = getExpectedPeakHeights(spectrum, 
                                               peptide_probabilities[["Probability"]], 
                                               undeuterated_dist, num_exchangeable)
         
-        data.table(Sequence = peptide,
-                   Time = time,
-                   Mass = seq(monoisotopic, monoisotopic + length(peak_heights) - 1, by = 1),
-                   ExpectedPeak = peak_heights)
+        data.table::data.table(Peptide = peptide,
+                               Time = time,
+                               Mass = seq(monoisotopic, monoisotopic + length(peak_heights) - 1, by = 1),
+                               ExpectedPeak = peak_heights)
       })
     })
 }
@@ -96,9 +158,7 @@ getExpectedPeakHeights = function(spectrum,
                                   undeuterated_dist,
                                   num_exchangeable) {
   total = spectrum[, sum(Intensity)]
-  probabilities = peptide_probabilities$Probability
-  spectrum = spectrum[order(Mass)]
-  
+
   sapply(1:(length(undeuterated_dist) + num_exchangeable), 
          function(k) {
            sum(sapply(max(1, k - num_exchangeable):min(length(undeuterated_dist), k),
@@ -110,14 +170,13 @@ getExpectedPeakHeights = function(spectrum,
 
 #' Get peptide-level probabilities from segment-level probabilities
 #' @keywords internal
-getExchangeProbabilities = function(segment_data,
-                                    by_segment_probabilities,
-                                    approximate_root) {
+getExchangeProbabilities = function(by_segment_probabilities,
+                                    num_exchangeable,
+                                    approximate_root = FALSE) {
   roots_by_segment = lapply(by_segment_probabilities, function(x) pracma::roots(rev(x)))
   all_roots = unlist(roots_by_segment, FALSE, FALSE)
   no_exchange_probability = prod(sapply(by_segment_probabilities, function(x) x[1]))
-  num_exchangeable = sum(segment_data[, MaxUptake])
-  
+
   polynomials = vector("list", num_exchangeable)
   roots_list = lapply(seq_along(polynomials), function(x) sum(all_roots ^ (-x)))
   roots_list = sapply(roots_list, function(x) Re(x))
@@ -130,8 +189,8 @@ getExchangeProbabilities = function(segment_data,
   }
   probabilities = lapply(polynomials, Re)
   probabilities = c(no_exchange_probability, probabilities)
-  data.table(NumExchanged = 0:num_exchangeable,
-             Probability = unlist(probabilities, FALSE, FALSE))
+  data.table::data.table(NumExchanged = 0:num_exchangeable,
+                         Probability = unlist(probabilities, FALSE, FALSE))
 }
 
 #' Convert beta parameters to probabilities

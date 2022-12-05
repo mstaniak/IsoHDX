@@ -4,7 +4,12 @@
 \alias{getOptimizationProblem}
 \title{Create optimization problem to estimate segment-specific exchange rates via OLS}
 \usage{
-getOptimizationProblem(observed_spectra, peptides_cluster, times)
+getOptimizationProblem(
+  observed_spectra,
+  peptides_cluster,
+  times,
+  max_peaks = 10
+)
 }
 \arguments{
 \item{observed_spectra}{data.table with observed isotopic distributions}

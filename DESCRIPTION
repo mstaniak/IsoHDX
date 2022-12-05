@@ -17,5 +17,5 @@ Imports:
     pracma
 Suggests: 
     knitr,
-    rmarkdown
+    rmarkdown, tinytest
 VignetteBuilder: knitr

@@ -5,9 +5,9 @@
 \title{Get peptide-level probabilities from segment-level probabilities}
 \usage{
 getExchangeProbabilities(
-  segment_data,
   by_segment_probabilities,
-  approximate_root
+  num_exchangeable,
+  approximate_root = FALSE
 )
 }
 \description{
