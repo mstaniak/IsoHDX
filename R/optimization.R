@@ -128,6 +128,7 @@ getExpectedSpectra = function(spectra,
         
         data.table::data.table(Peptide = peptide,
                                Time = time,
+                               UndeuteratedDist = undeuterated_dist,
                                Mass = seq(monoisotopic, monoisotopic + length(peak_heights) - 1, by = 1),
                                ExpectedPeak = peak_heights)
       })
