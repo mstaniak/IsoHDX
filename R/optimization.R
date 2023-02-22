@@ -102,35 +102,26 @@ getExpectedSpectra = function(spectra,
   expected_peak_heights = lapply(
     unique(peptides_cluster[["Peptide"]]),
     function(peptide) {
-      undeuterated_dist_raw = BRAIN::useBRAIN(getAtomsFromSeq(peptide), nrPeaks = 10)
+      undeuterated_dist_raw = BRAIN::useBRAIN(BRAIN::getAtomsFromSeq(peptide), nrPeaks = 10)
       undeuterated_dist = undeuterated_dist_raw[["isoDistr"]]
-      undeuterated_dist = undeuterated_dist / sum(undeuterated_dist) # cheating
+      undeuterated_dist = undeuterated_dist/sum(undeuterated_dist)
       monoisotopic = undeuterated_dist_raw[["monoisotopicMass"]]
-      
-      present_segments = as.logical(ps_m[Peptide == peptide, -1, with = FALSE]) 
-      segment_probabilities = makeSegmentProbabilities(betas,
-                                                       times, 
-                                                       num_parameters,
-                                                       present_segments)
+      present_segments = as.logical(ps_m[Peptide == peptide, -1, with = FALSE])
+      segment_probabilities = IsoHDX:::makeSegmentProbabilities(betas, times, num_parameters, present_segments)
       num_exchangeable = sum(num_parameters[present_segments])
-      
       lapply(seq_along(times), function(i) {
         time = times[i]
         probs = segment_probabilities[[i]]
-        peptide_probabilities = getExchangeProbabilities(probs,
-                                                         num_exchangeable,
-                                                         FALSE)
+        peptide_probabilities = IsoHDX:::getExchangeProbabilities(probs, num_exchangeable, FALSE)
         spectrum = spectra[Peptide == peptide & Time == time]
-        
-        peak_heights = getExpectedPeakHeights(spectrum, 
-                                              peptide_probabilities[["Probability"]], 
-                                              undeuterated_dist, num_exchangeable)
-        
-        data.table::data.table(Peptide = peptide,
-                               Time = time,
-                               UndeuteratedDist = undeuterated_dist,
-                               Mass = seq(monoisotopic, monoisotopic + length(peak_heights) - 1, by = 1),
-                               ExpectedPeak = peak_heights)
+        peak_heights = IsoHDX:::getExpectedPeakHeights(spectrum, 
+                                                       peptide_probabilities[["Probability"]], undeuterated_dist, 
+                                                       num_exchangeable)
+        data.table::data.table(Peptide = peptide, Time = time, 
+                               UndeuteratedDist = c(undeuterated_dist, rep(NA, length(peak_heights) - length(undeuterated_dist))), 
+                               Mass = seq(monoisotopic, 
+                                          monoisotopic + length(peak_heights) - 1, 
+                                          by = 1), ExpectedPeak = peak_heights)
       })
     })
 }
