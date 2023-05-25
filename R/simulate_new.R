@@ -85,7 +85,7 @@ getSpectraByPeptide = function(peptides_cluster,
   peptides_cluster[, Present := 1]
   segment_peptide = data.table::dcast(peptides_cluster, Peptide ~ Segment, 
                                       value.var = "Present", fill = 0)
-  segment_peptide = segment_peptide[, c("Peptide", unique(peptides_cluster$Segment)),
+  segment_peptide = segment_peptide[, c("Peptide", unique(as.character(peptides_cluster$Segment))),
                                     with = FALSE]
   nums_exchangeable = peptides_cluster[, .(num_ex = sum(MaxUptake)),
                                        by = "Peptide"]

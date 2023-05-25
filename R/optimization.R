@@ -17,7 +17,7 @@ getOptimizationProblem = function(observed_spectra,
   function(betas) {
     theoretical_spectra = getExpectedSpectra(observed_spectra,
                                              peptides_cluster,
-                                             times, betas)
+                                             times, betas, max_peaks)
     theoretical_spectra = data.table::rbindlist(unlist(theoretical_spectra, FALSE, FALSE))
     theoretical_spectra = theoretical_spectra[order(Peptide, Time, Mass)]
     theoretical_spectra[, PeakId := 1:.N,  by = c("Peptide", "Time")]
@@ -92,19 +92,19 @@ getMonoisotopicMasses = function(peptides_cluster, max_peaks = 10) {
 #' @keywords internal
 getExpectedSpectra = function(spectra,
                               peptides_cluster, 
-                              times, betas) {
+                              times, betas, max_peaks = 10) {
   segments = unique(peptides_cluster[, .(Segment, Start, End, MaxUptake)])
   peptides_cluster[, Present := 1]
   ps_m = data.table::dcast(peptides_cluster, Peptide ~ Segment, value.var = "Present", fill = 0)
-  ps_m = ps_m[, c("Peptide", segments$Segment), with = FALSE]
+  ps_m = ps_m[, c("Peptide", levels(segments$Segment)), with = FALSE]
   num_parameters = segments[["MaxUptake"]]
 
   expected_peak_heights = lapply(
     unique(peptides_cluster[["Peptide"]]),
     function(peptide) {
-      undeuterated_dist_raw = BRAIN::useBRAIN(BRAIN::getAtomsFromSeq(peptide), nrPeaks = 10)
+      undeuterated_dist_raw = BRAIN::useBRAIN(BRAIN::getAtomsFromSeq(peptide), nrPeaks = max_peaks)
       undeuterated_dist = undeuterated_dist_raw[["isoDistr"]]
-      undeuterated_dist = undeuterated_dist/sum(undeuterated_dist)
+      undeuterated_dist = undeuterated_dist / sum(undeuterated_dist)
       monoisotopic = undeuterated_dist_raw[["monoisotopicMass"]]
       present_segments = as.logical(ps_m[Peptide == peptide, -1, with = FALSE])
       segment_probabilities = IsoHDX:::makeSegmentProbabilities(betas, times, num_parameters, present_segments)
@@ -160,9 +160,59 @@ getExpectedPeakHeights = function(spectrum,
          })
 }
 
+
 #' Get peptide-level probabilities from segment-level probabilities
 #' @keywords internal
 getExchangeProbabilities = function(by_segment_probabilities,
+                                    num_exchangeable,
+                                    approximate_root = FALSE) {
+  no_exchange_probability = prod(sapply(by_segment_probabilities, function(x) x[1]))
+  power_sums = lapply(by_segment_probabilities, function(x) {
+    power_sums = vector("numeric", num_exchangeable + 1)
+    power_sums[1] = no_exchange_probability
+    coefs = c(x, rep(0, num_exchangeable + 1 - length(x)))
+    
+    for (i in 2:(num_exchangeable + 1)) {
+      if (i <= length(x)) {
+        if (i == 2) {
+          power_sums[i] = -(i - 1) * coefs[i] / coefs[i - 1] 
+        } else {
+          power_sums[i] = ((-(i - 1) * coefs[i]) - sum(rev(coefs[2:(i - 1)]) * power_sums[2:(i - 1)])) / coefs[1]
+        }
+        # i = j + 1 <=> j = i - 1
+        # q_j = -1/j * sum^{l = 1}^{j}q_{j - l}psi(l) <=> psi(j) = ((-j * q_j) - sum_{l = 1}^{j - 1}q_{j - l}psi(l))/q_0 
+        # power_sums[i] = -(i - 1) * coefs[i] / coefs[i - 1]  
+        # power_sums[i] = (-(i - 1) * coefs[i] - sum(rev(coefs[2:(i)]) * power_sums[2:(i)])) / coefs[1]
+        # power_sums[i] = -(i - 1) * sum(rev(coefs[2:(i - 1)]) * power_sums[2:(i - 1)]) / coefs[1]
+        # i = 3 <=> j = 2
+        # q_2 = (-1/2) * (q_1 * psi(1) + q_0 * psi(2))
+        # q_2 * (-2) = q_1 * psi(1) + q_0 * psi(2)
+      } else {
+        power_sums[i] = -sum(rev(coefs[2:(i - 1)]) * power_sums[2:(i - 1)]) / coefs[1]
+      }
+    }
+    power_sums
+  })
+  roots_list = colSums(matrix(unlist(power_sums), nrow = length(power_sums), byrow = T))[-1]
+  
+  polynomials = vector("list", num_exchangeable)
+  for (i in seq_len(num_exchangeable)) {
+    if (i == 1) {
+      polynomials[[i]] = - no_exchange_probability * roots_list[1]
+    } else {
+      polynomials[[i]] = (-1 / i) * sum(rev(c(no_exchange_probability, unlist(polynomials[1:(i - 1)], FALSE, FALSE))) * roots_list[1:i])
+    }
+  }
+  probabilities = lapply(polynomials, Re)
+  probabilities = c(no_exchange_probability, probabilities)
+  data.table::data.table(NumExchanged = 0:num_exchangeable,
+                         Probability = unlist(probabilities, FALSE, FALSE))
+}
+
+
+#' Get peptide-level probabilities from segment-level probabilities
+#' @keywords internal
+getExchangeProbabilitiesOld = function(by_segment_probabilities,
                                     num_exchangeable,
                                     approximate_root = FALSE) {
   roots_by_segment = lapply(by_segment_probabilities, function(x) pracma::roots(rev(x)))
@@ -174,9 +224,9 @@ getExchangeProbabilities = function(by_segment_probabilities,
   roots_list = sapply(roots_list, function(x) Re(x))
   for (i in seq_len(num_exchangeable)) {
     if (i == 1) {
-      polynomials[[i]] = - no_exchange_probability * sum(as.complex(1)/ all_roots)
+      polynomials[[i]] = Re(- no_exchange_probability * sum(as.complex(1)/ all_roots))
     } else {
-      polynomials[[i]] = (-1 / i) * sum(rev(c(no_exchange_probability, unlist(polynomials[1:(i - 1)], FALSE, FALSE))) * roots_list[1:i])
+      polynomials[[i]] = Re((-1 / i) * sum(Re(rev(c(no_exchange_probability, unlist(polynomials[1:(i - 1)], FALSE, FALSE)))) * roots_list[1:i]))
     }
   }
   probabilities = lapply(polynomials, Re)

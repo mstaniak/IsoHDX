@@ -11,3 +11,7 @@ probs_1 = IsoHDX:::getExchangeProbabilities(
 )
 
 tinytest::expect_equal(probs_1$Probability, c(0.15, 0.38, 0.24))
+
+# Np. p-stwo segmentu 1, 3 hydrogens: 
+# p00 + p01I + p02I + p03I
+# równania:
