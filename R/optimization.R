@@ -9,7 +9,7 @@
 getOptimizationProblem = function(observed_spectra,
                                   peptides_cluster,
                                   times, max_peaks = 10,
-                                  weights = 1) {
+                                  weights = NULL, theta = 1) {
   monoisotopic_masses = getMonoisotopicMasses(peptides_cluster, max_peaks)
   observed_spectra_peakid = getPeakIds(observed_spectra, monoisotopic_masses)
   # previous_peaks <<- 1
@@ -25,6 +25,16 @@ getOptimizationProblem = function(observed_spectra,
     compare = merge(theoretical_spectra, observed_spectra_peakid,
                     by = c("Peptide", "Time", "PeakId"),
                     all.x = T, all.y = T)
+    if (!is.null(weights)) {
+      compare = merge(compare, weights,
+                      by = c("Peptide", "Time", "PeakId"),
+                      all.x = T, all.y = T)
+      sum( ((compare[["Weight"]] ^ theta) * (compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2,
+           na.rm = TRUE)
+    } else {
+      sum( ((compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2,
+           na.rm = TRUE)
+    }
     # compare = compare[!is.na(Intensity)]
     # crit = (previous_peaks * (compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2
     # crit = ifelse(is.nan(crit), 0, crit)
@@ -35,8 +45,6 @@ getOptimizationProblem = function(observed_spectra,
     # weights <- ifelse(is.nan(weights), 0, weights)
     # previous_peaks <<- weights
     # res
-    sum( (weights * (compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2,
-         na.rm = TRUE)
   }
 }
 
