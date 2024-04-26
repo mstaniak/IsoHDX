@@ -7,8 +7,10 @@
 getOptimizationProblem(
   observed_spectra,
   peptides_cluster,
-  times,
-  max_peaks = 10
+  time_0_data,
+  undeuterated_dists,
+  weights = NULL,
+  theta = 1
 )
 }
 \arguments{
@@ -16,7 +18,12 @@ getOptimizationProblem(
 
 \item{peptides_cluster}{data.table with information about peptides cluster}
 
-\item{times}{numeric vector of time points}
+\item{time_0_data}{data.table with information about isotopic distributions of
+undeuterated peptides}
+
+\item{weights}{optional data.table with weights for each time point, peptide and isotopic peak}
+
+\item{theta}{optional scalar variance parameter (see more in the Details section)}
 }
 \description{
 Create optimization problem to estimate segment-specific exchange rates via OLS
