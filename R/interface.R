@@ -27,7 +27,7 @@ fitIsoSegmentModel = function(observed_spectra,
   analytical_gradient = getAnalyticalGradient(use_analytical_gradient, observed_spectra,
                                        peptides_cluster, peptide_segment_structure,
                                        num_parameters, time_0_data, undeuterated_dists,
-                                       weights, theta)
+                                       weights = NULL, theta = 1)
   ols_solution = getOptimProblemSolution(starting_point, ols_optim_problem, analytical_gradient) # todo: handle non-convergence
   plgls_solution = getFinalSolution(method, use_analytical_gradient,
                                     starting_point, ols_solution,
@@ -47,7 +47,7 @@ getParametersCounts = function(peptides_cluster) {
 
 getStartingPoint = function(starting_point, num_parameters) {
   if (is.null(starting_point)) {
-    starting_point = runif(num_parameters, 1e-5, 1e-3)
+    starting_point = runif(num_parameters, -1e-3, -1e-5)
   }
   starting_point
 }
@@ -97,7 +97,8 @@ getFinalSolution = function(method,
     current_parameters = current_solution
     
     iter = 1
-    while(iter <= max_iter & sum((initial_solution - current_solution)^2) >= 1e-6) {
+    while(iter <= max_iter & max(abs(initial_solution - current_solution) / abs(initial_solution)) >= 1e-2) {
+      print(iter)
       current_weights = getCurrentWeights(current_solution, observed_spectra, peptide_segment_structure, num_parameters, undeuterated_dists)
       current_theta = getCurrentTheta(current_solution, observed_spectra, current_weights, peptide_segment_structure, num_parameters, undeuterated_dists)
       
@@ -116,99 +117,157 @@ getFinalSolution = function(method,
       current_solution = current_optimized$par
       iter = iter + 1
     }
-    c(current_optimized, converged = sum((initial_solution - current_solution)^2) >= 1e-6, num_iter = iter - 1)
+    
+    if (iter == 1) {
+      current_optimized = ols_solution
+      current_weights = NULL
+      current_theta = 1
+    }
+    optimized = c(current_optimized, converged = !(max(abs(initial_solution - current_solution) / abs(initial_solution)) >= 1e-2), num_iter = iter - 1,
+                  weights = current_weights, theta = current_theta)
+    makeModelFittingOutput(observed_spectra, time_0_data, undeuterated_dists,
+                           peptide_segment_structure, num_parameters,
+                           optimized[["par"]], optimized[["theta"]], 
+                           optimized)
   } else {
-    c(ols_solution, converged = ols_solution[["convergence"]] == 0, num_iter = 1)
+    optimized = c(ols_solution, converged = ols_solution[["convergence"]] == 0, num_iter = 1,
+                  weights = NULL, theta = NULL)
+    list(FinalComparison = NULL,
+         FittedProbabilities = NULL,
+         OptimizationResult = optimized)
   }
 }
 
-# seg_pars_final = getSegmentParametersFromBetas(current_optimized$par, num_parameters + 1)
-# seg_probs_final = getSegmentProbabilitiesFromParams(seg_pars_final, unique(observed_spectra$Time))
-# pept_probs_final = getPeptideProbabilities(peptide_segment_structure, seg_probs_final)
-# 
-# # Gradient
-# 
-# peak_derivatives = get_expected_peaks_derivatives(observed_spectra, 
-#                                                   peptides_cluster,
-#                                                   peptide_segment_structure, num_parameters,
-#                                                   peaks_0_7_info[Charge == 2],
-#                                                   und_d)
-# final_peak_ders = peak_derivatives(current_solution)
-# final_peak_ders = final_peak_ders[!is.na(ExpectedPeak) & !is.na(Intensity) & ExpectedPeak > 0]
-# 
-# final_theoretical_spectra = getExpectedSpectra2(current_solution, peptide_segment_structure, num_parameters + 1, observed_spectra, undeuterated_dists)
-# final_compare = merge(observed_spectra, final_theoretical_spectra,
-#                       by = c("Peptide", "Time", "IntDiff"),
-#                       sort = FALSE)
-# theta = current_theta
-# p = length(current_solution)
-# final_compare = final_compare[!is.na(ExpectedPeak) & !is.na(Intensity) & ExpectedPeak > 0]
-# var2 = final_compare[, .(var = sum(((ExpectedPeak - Intensity) / (ExpectedPeak ^ theta))^2) / (.N - p))]$var
-# 
-# der_check = final_peak_ders[, .(Time, Peptide, IntDiff, Segment, ParameterID, DerivativeEt, 
-#                                 ExpectedPeak, Intensity)]
-# par_ids = unique(der_check[, .(Segment, ParameterID)])
-# par_ids[, ParamID := 1:nrow(par_ids)]
-# 
-# 
-# ders = split(final_peak_ders, final_peak_ders[, .(Time, Peptide, IntDiff)])
-# ders = ders[sapply(ders, function(x) !is.null(x) & nrow(x) > 0)]
-# ders = lapply(ders, function(x) merge(x, par_ids, by = c("Segment", "ParameterID"),
-#                                       all.x = T, all.y = T))
-# ders = lapply(ders, function(x) {
-#   x[, DerivativeEt := ifelse(is.na(DerivativeEt), 0, DerivativeEt)]
-# })
-# ders_matrices = lapply(ders, function(x) {
-#   x = x[, .(ParamID, DerivativeEt, ExpectedPeak)][order(ParamID)]
-#   (1 / (na.omit(unique(x$ExpectedPeak)))^(2*theta)) * (x$DerivativeEt %*% t(x$DerivativeEt))
-# })
-# 
-# 
-# get_ith_time_der = function(num_parameters, times, i) {
-#   function(current_solution) {
-#     segs = getSegmentParametersFromBetas(current_solution, num_parameters + 1)  
-#     probs = getSegmentProbabilitiesFromParams(segs, times)
-#     probs = probs[[i]]
-#     probs
-#     unlist(probs, F, F)
-#   }
-# }
-# 
-# 
-# total_matrix = matrix(0, nrow = 18, ncol = 18)
-# for (m in ders_matrices) {
-#   total_matrix = total_matrix + m
-# }
-# 
-# round(var2 * diag(solve(total_matrix)), 2)
-# 
-# cov_m = var2 * solve(total_matrix)
-# det(cov_m)
-# pracma::isposdef(cov_m)
-# 
-# der_2_time = get_ith_time_der(num_parameters, times, 2)
-# der_2_time(current_solution)
-# length(der_2_time(current_solution))
-# 
-# grad_time_2 = numDeriv::grad(der_2_time, current_solution)
-# grad_time_2
-# 
-# jac_time_2 = numDeriv::jacobian(der_2_time, current_solution)
-# 
-# t(grad_time_2) %*% cov_m %*% t(t(grad_time_2))
-# t(grad_time_2) %*% cov_m %*% grad_time_2
-# 
-# round(diag(t(jac_time_2) %*% cov_m %*% jac_time_2) / sqrt(nrow(final_compare)), 6)
-# 
-# num_parameters
-# der_2_time(current_solution)
-# vars = diag(t(jac_time_2) %*% cov_m %*% jac_time_2) / sqrt(nrow(final_compare))
-# seg_probs_t2 = data.table(Segment = rep(as.character(segments$Segment), times = num_parameters + 1),
-#                           NumExchanged = unlist(sapply(num_parameters, function(x) 0:x)),
-#                           Probability = der_2_time(current_solution))
-# seg_probs_t2[, Lower := Probability - qnorm(1 - 0.05/2) * sqrt(vars)]
-# seg_probs_t2[, Upper := Probability + qnorm(1 - 0.05/2) * sqrt(vars)]
-# seg_probs_t2[, Var := vars]
-# seg_probs_t2[, Lower := max(0, Lower), by = c("Segment", "NumExchanged")]
-# seg_probs_t2[, Upper := min(1, Upper), by = c("Segment", "NumExchanged")]
-#
+makeModelFittingOutput = function(observed_spectra, time_0_data, undeuterated_dists,
+                                  peptide_segment_structure,
+                                  num_parameters, parameters, theta, optim_output) {
+  peptides = peptide_segment_structure[["Peptide"]]
+  time_points = unique(observed_spectra[["Time"]])
+  
+  seg_pars_final = getSegmentParametersFromBetas(parameters, num_parameters + 1)
+  seg_probs_final = getSegmentProbabilitiesFromParams(seg_pars_final, time_points)
+  pept_probs_final = getPeptideProbabilities(peptide_segment_structure, seg_probs_final)
+  
+  final_peak_ders = getFinalPeakDerivatives(observed_spectra,
+                                            peptides_cluster,
+                                            peptide_segment_structure,
+                                            num_parameters,
+                                            time_0_data,
+                                            undeuterated_dists,
+                                            parameters)
+  
+  final_theoretical_spectra = getExpectedSpectra(parameters, peptide_segment_structure, num_parameters + 1, observed_spectra, undeuterated_dists)
+  final_comparison = merge(observed_spectra, final_theoretical_spectra,
+                        by = c("Peptide", "Time", "IntDiff"),
+                        sort = FALSE)
+  
+  probs_with_conf_ints = getProbabilitiesConfidenceIntervals(final_comparison, 
+                                                             final_peak_ders, 
+                                                             peptide_segment_structure, 
+                                                             parameters, 
+                                                             num_parameters, theta)
+  probs_with_conf_ints
+  
+  list(FinalComparison = final_comparison,
+       FittedProbabilities = probs_with_conf_ints,
+       OptimizationResult = optim_output) # Todo: optimization history
+}
+
+getFinalPeakDerivatives = function(observed_spectra,
+                                   peptides_cluster,
+                                   peptide_segment_structure,
+                                   num_parameters,
+                                   time_0_data,
+                                   undeuterated_dists,
+                                   parameters) {
+  peak_derivatives = getExpectedPeaksDerivatives(observed_spectra,
+                                                 peptides_cluster,
+                                                 peptide_segment_structure,
+                                                 num_parameters,
+                                                 time_0_data,
+                                                 undeuterated_dists)
+  final_peak_ders = peak_derivatives(parameters)
+  final_peak_ders = final_peak_ders[!is.na(ExpectedPeak) & !is.na(Intensity) & ExpectedPeak > 0]
+  final_peak_ders
+}
+
+#' @importFrom data.table rbindlist
+getProbabilitiesConfidenceIntervals = function(final_comparison, 
+                                               final_peak_ders, 
+                                               peptide_segment_structure, 
+                                               parameters, 
+                                               num_parameters, theta) {
+  time_points = unique(final_comparison[["Time"]])
+  segments = colnames(peptide_segment_structure)[-1]
+  parameters_covariance = getParametersCovarianceMatrix(final_comparison, final_peak_ders, parameters, theta) 
+  probs_with_confidence = data.table::rbindlist(lapply(seq_along(time_points),
+                                    function(ith_time) {
+                                      getConfidenceIntervalSingleTimePoint(parameters_covariance, time_points, num_parameters,
+                                                                           segments, parameters, nrow(final_comparison), ith_time)
+                                    }))
+  probs_with_confidence
+}
+
+getParametersCovarianceMatrix = function(final_comparison, final_peak_ders, parameters, theta) {
+  p = length(parameters)
+  final_comparison = final_comparison[!is.na(ExpectedPeak) & !is.na(Intensity) & ExpectedPeak > 0]
+  var = final_comparison[, .(var = sum(((ExpectedPeak - Intensity) / (ExpectedPeak ^ theta))^2) / (.N - p))]$var
+  
+  par_ids = unique(final_peak_ders[, .(Segment, ParameterID)])
+  par_ids[, ParamID := 1:nrow(par_ids)]
+  
+  ders = split(final_peak_ders, final_peak_ders[, .(Time, Peptide, IntDiff)])
+  ders = ders[sapply(ders, function(x) !is.null(x) & nrow(x) > 0)]
+  ders = lapply(ders, function(x) merge(x, par_ids, by = c("Segment", "ParameterID"),
+                                        all.x = TRUE, all.y = TRUE))
+  ders = lapply(ders, function(x) {
+    x[, DerivativeEt := ifelse(is.na(DerivativeEt), 0, DerivativeEt)]
+  })
+  
+  ders_matrices = lapply(ders, function(x) {
+    x = x[, .(ParamID, DerivativeEt, ExpectedPeak)][order(ParamID)]
+    (1 / (na.omit(unique(x$ExpectedPeak)))^(2*theta)) * (x$DerivativeEt %*% t(x$DerivativeEt))
+  })
+  
+  total_matrix = matrix(0, nrow = p, ncol = p)
+  for (m in ders_matrices) {
+    total_matrix = total_matrix + m
+  }
+  cov_m = var * solve(total_matrix)
+  cov_m
+}
+
+
+#' @importFrom numDeriv grad jacobian
+getConfidenceIntervalSingleTimePoint = function(parameters_covariance, time_points, num_parameters,
+                                                segments, parameters, n, time_id) {
+  der_ith_time = getIthTimeDerivative(num_parameters, time_points, time_id)
+  jac_time_ith = numDeriv::jacobian(der_ith_time, parameters)
+  
+  vars = diag(t(jac_time_ith) %*% parameters_covariance %*% jac_time_ith) / sqrt(n)
+  
+  seg_probs_ith = data.table(Segment = rep(segments, times = num_parameters + 1),
+                            NumExchanged = unlist(sapply(num_parameters, function(x) 0:x)),
+                            Probability = der_ith_time(parameters))
+  
+  seg_probs_ith[, Lower := Probability - qnorm(1 - 0.05/2) * sqrt(vars)]
+  seg_probs_ith[, Upper := Probability + qnorm(1 - 0.05/2) * sqrt(vars)]
+  seg_probs_ith[, Var := vars]
+  seg_probs_ith[, Lower := max(0, Lower), by = c("Segment", "NumExchanged")]
+  seg_probs_ith[, Upper := min(1, Upper), by = c("Segment", "NumExchanged")]
+  seg_probs_ith[, Time := time_points[time_id]]
+  seg_probs_ith
+}
+
+getIthTimeDerivative = function(num_parameters, times, i) {
+  function(parameters) {
+    segs = getSegmentParametersFromBetas(parameters, num_parameters + 1)
+    probs = getSegmentProbabilitiesFromParams(segs, times)
+    probs = probs[[i]]
+    probs
+    unlist(probs, F, F)
+  }
+}
+
+
+

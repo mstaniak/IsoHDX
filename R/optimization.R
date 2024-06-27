@@ -11,9 +11,9 @@
 #' @export
 #' 
 getOptimizationProblem = function(observed_spectra,
-                                   peptides_cluster,
-                                   time_0_data, undeuterated_dists,
-                                   weights = NULL, theta = 1) {
+                                  peptides_cluster,
+                                  time_0_data, undeuterated_dists,
+                                  weights = NULL, theta = 1) {
   times = unique(observed_spectra$time)
   segments = unique(peptides_cluster[, .(Segment, MaxUptake)])
   peptides_cluster[, Present := 1]
@@ -23,10 +23,10 @@ getOptimizationProblem = function(observed_spectra,
   
   function(parameters) {
     theoretical_spectra = getExpectedSpectra(parameters,
-                                              ps_m,
-                                              num_parameters + 1,
-                                              observed_spectra,
-                                              undeuterated_dists)
+                                             ps_m,
+                                             num_parameters + 1,
+                                             observed_spectra,
+                                             undeuterated_dists)
     
     compare = merge(theoretical_spectra,
                     observed_spectra,
@@ -68,9 +68,9 @@ getSegmentProbabilitiesFromParams = function(segment_params, time_points) {
 
 #' @keywords internal
 getExpectedPeakHeights = function(total,
-                                   probabilities,
-                                   undeuterated_dist,
-                                   num_exchangeable) {
+                                  probabilities,
+                                  undeuterated_dist,
+                                  num_exchangeable) {
   
   sapply(1:(length(undeuterated_dist) + num_exchangeable), 
          function(k) {
@@ -95,13 +95,18 @@ getPeptideProbabilities = function(pept_seg_struct, segment_probs) {
 
 #' @keywords internal
 getExpectedSpectra = function(parameters,
-                               pept_seg_struct,
-                               param_counts,
-                               observed_spectra,
-                               undeuterated_dists) {
+                              pept_seg_struct,
+                              param_counts,
+                              observed_spectra,
+                              undeuterated_dists) {
   times = unique(observed_spectra$Time)
   params_by_seq = getSegmentParametersFromBetas(parameters, param_counts)
   probs_by_time_seg = getSegmentProbabilitiesFromParams(params_by_seq, times)
+  probs_by_time_seg = lapply(probs_by_time_seg, function(x) lapply(x, function(y) {
+    y = ifelse(is.nan(y), (1 - sum(y[!is.nan(y)])) / sum(is.nan(y)), y)
+    y = y / sum(y)
+    y
+  }))
   pept_probs = getPeptideProbabilities(pept_seg_struct, probs_by_time_seg)
   
   rbindlist(lapply(seq_along(pept_probs), function(ith_time) {
@@ -123,9 +128,9 @@ getProbabilitiesFromBetas = function(betas, time) {
   intercept = betas[1]
   betas = betas[-1]
   betas = c(betas, 0)
-  betas = betas - max(betas)
-  total = sum(exp(betas * (time - intercept)))
-  probs = exp(betas * (time - intercept)) / total
+  # betas = betas - max(betas) 
+  total = sum(exp(betas * time - intercept))
+  probs = exp(betas * time - intercept) / total
   probs
 }
 
@@ -136,8 +141,6 @@ getProtonMass = function() {
 
 #' @keywords internal
 get_analytical_derivatives = function(peptides_cluster, pept_seg_struct, undeuterated_dists, num_parameters, time_points, parameters) {
-  time_points = unique(observed_spectra$Time)
-  
   total_num_params = sum(num_parameters)
   n_pars = num_parameters
   names(n_pars) = colnames(pept_seg_struct)[-1]
@@ -240,9 +243,9 @@ getUndeuteratedDists = function(time_0_data) {
 #' @export
 #' 
 get_analytical_gradient_loss = function(observed_spectra, peptides_cluster,
-                                         pept_seg_struct, num_parameters,
-                                         time_0_data, undeuterated_dists,
-                                         weights = NULL, theta = 1) {
+                                        pept_seg_struct, num_parameters,
+                                        time_0_data, undeuterated_dists,
+                                        weights = NULL, theta = 1) {
   time_points = unique(observed_spectra$Time)
   observed_spectra = observed_spectra
   peptides_cluster = peptides_cluster
@@ -405,7 +408,7 @@ get_derivative = function(betas_segment, time, l, j, n_k) {
 #' @keywords internal
 getCurrentWeights = function(current_parameters, observed_spectra, pept_seg_struct, num_parameters, undeuterated_dists) {
   expected_spectra = getExpectedSpectra(current_parameters, pept_seg_struct,
-                                         num_parameters + 1, observed_spectra, undeuterated_dists)
+                                        num_parameters + 1, observed_spectra, undeuterated_dists)
   expected_spectra = expected_spectra[ExpectedPeak > 0 & !is.na(ExpectedPeak)]
   prod = (1 / nrow(expected_spectra)) * sum(log(expected_spectra$ExpectedPeak))
   grand_mean = exp(prod)
@@ -417,7 +420,7 @@ getCurrentWeights = function(current_parameters, observed_spectra, pept_seg_stru
 #' @keywords internal
 getCurrentTheta = function(current_parameters, observed_spectra, weights, pept_seg_struct, num_parameters, undeuterated_dists) {
   theoretical_spectra = getExpectedSpectra(current_parameters, pept_seg_struct,
-                                            num_parameters + 1, observed_spectra, undeuterated_dists)
+                                           num_parameters + 1, observed_spectra, undeuterated_dists)
   
   compare = merge(theoretical_spectra,
                   observed_spectra,
@@ -435,8 +438,8 @@ getCurrentTheta = function(current_parameters, observed_spectra, weights, pept_s
 
 #' @keywords internal
 getExpectedPeaksDerivatives = function(observed_spectra, peptides_cluster,
-                                          pept_seg_struct, num_parameters,
-                                          time_0_data, undeuterated_dists) {
+                                       pept_seg_struct, num_parameters,
+                                       time_0_data, undeuterated_dists) {
   time_points = unique(observed_spectra$Time)
   observed_spectra = observed_spectra
   peptides_cluster = peptides_cluster
