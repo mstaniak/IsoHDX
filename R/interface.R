@@ -125,16 +125,19 @@ getFinalSolution = function(method,
     }
     optimized = c(current_optimized, converged = !(max(abs(initial_solution - current_solution) / abs(initial_solution)) >= 1e-2), num_iter = iter - 1,
                   weights = current_weights, theta = current_theta)
-    makeModelFittingOutput(observed_spectra, time_0_data, undeuterated_dists,
-                           peptide_segment_structure, num_parameters,
-                           optimized[["par"]], optimized[["theta"]], 
-                           optimized)
+    result = makeModelFittingOutput(observed_spectra, time_0_data, undeuterated_dists,
+                                    peptide_segment_structure, num_parameters,
+                                    optimized[["par"]], optimized[["theta"]], 
+                                    optimized)
+    result$OLS = ols_solution
+    result
   } else {
     optimized = c(ols_solution, converged = ols_solution[["convergence"]] == 0, num_iter = 1,
                   weights = NULL, theta = NULL)
     list(FinalComparison = NULL,
          FittedProbabilities = NULL,
-         OptimizationResult = optimized)
+         OptimizationResult = optimized,
+         OLS = ols_solution)
   }
 }
 
@@ -166,8 +169,6 @@ makeModelFittingOutput = function(observed_spectra, time_0_data, undeuterated_di
                                                              peptide_segment_structure, 
                                                              parameters, 
                                                              num_parameters, theta)
-  probs_with_conf_ints
-  
   list(FinalComparison = final_comparison,
        FittedProbabilities = probs_with_conf_ints,
        OptimizationResult = optim_output) # Todo: optimization history
@@ -247,7 +248,7 @@ getConfidenceIntervalSingleTimePoint = function(parameters_covariance, time_poin
   vars = diag(t(jac_time_ith) %*% parameters_covariance %*% jac_time_ith) / sqrt(n)
   
   seg_probs_ith = data.table(Segment = rep(segments, times = num_parameters + 1),
-                            NumExchanged = unlist(sapply(num_parameters, function(x) 0:x)),
+                            NumExchanged = unlist(lapply(num_parameters, function(x) 0:x)),
                             Probability = der_ith_time(parameters))
   
   seg_probs_ith[, Lower := Probability - qnorm(1 - 0.05/2) * sqrt(vars)]
