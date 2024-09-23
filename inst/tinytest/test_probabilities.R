@@ -1,3 +1,5 @@
+# Nowy wzór na prawdopodobieństwa: wymaga dodania do wektorów wejściowych wyrazu wolnego
+
 total = 1 + 2 * exp(1)
 tinytest::expect_equal(IsoHDX:::getProbabilitiesFromBetas(c(1, 1), 1),
                        c(exp(1) / total, exp(1) / total, 1 - (2 * exp(1) / (total))))

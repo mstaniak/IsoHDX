@@ -528,7 +528,7 @@ getExpectedProbabilitiesTable = function(spectra,
         time = times[i]
         probs = segment_probabilities[[i]]
         
-        peptide_probabilities = IsoHDX:::getExchangeProbabilities(probs, num_exchangeable, FALSE)
+        peptide_probabilities = getExchangeProbabilities(probs, num_exchangeable, FALSE)
         
         lapply(spectra[Peptide == peptide & Time == time, unique(Charge)], function(charge) {
           list(Peptide = peptide, 
