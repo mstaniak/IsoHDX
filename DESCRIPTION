@@ -17,6 +17,8 @@ Imports:
     pracma
 Suggests: 
     knitr,
-    rmarkdown, 
+    Peptides,
+    polynom,
+    rmarkdown,
     tinytest
 VignetteBuilder: knitr

@@ -32,6 +32,8 @@ getOptimizationProblem = function(observed_spectra,
                     observed_spectra,
                     by = c("Peptide", "Time", "IntDiff"),
                     all.x = T, all.y = T)
+    # compare[, ExpectedPeak := ifelse(is.na(ExpectedPeak), 0, ExpectedPeak)] # based on comments in the draft
+    # compare[, Intensity := ifelse(is.na(Intensity), 0, Intensity)] # based on comments in the draft
     if (!is.null(weights)) {
       compare = merge(compare, weights,
                       by = c("Peptide", "Time", "IntDiff"),
@@ -127,10 +129,11 @@ getExpectedSpectra = function(parameters,
 getProbabilitiesFromBetas = function(betas, time) {
   intercept = betas[1]
   betas = betas[-1]
-  betas = c(betas, 0)
   # betas = betas - max(betas) 
-  total = sum(exp(betas * time - intercept))
-  probs = exp(betas * time - intercept) / total
+  total = sum(exp(betas * time + intercept)) + 1
+  probs = exp(betas * time + intercept) / total
+  probs = c(probs, 1 - sum(probs))
+  if (any(is.nan(probs))) browser()
   probs
 }
 
@@ -315,17 +318,15 @@ get_analytical_gradient_loss = function(observed_spectra, peptides_cluster,
 getExchangeProbabilities = function(by_segment_probabilities,
                                     num_exchangeable,
                                     approximate_root = FALSE) {
-  by_segment_probabilities = lapply(by_segment_probabilities, function(x) ifelse(x < 1e-4, 0, x))
-  # check_larger = lapply(by_segment_probabilities, function(x) which(x >= 1e-4))
-  # if(any(sapply(check_larger, length) == 0)) browser() 
-  first_nonzero = vapply(by_segment_probabilities, function(x) min(which(x >= 1e-4)), numeric(1))
+  first_nonzero = vapply(by_segment_probabilities, function(x) min(which(x >= 1e-8)), numeric(1))
+  last_nonzero = vapply(by_segment_probabilities, function(x) max(which(abs(x) >= 1e-8)), numeric(1))
   lengths = vapply(by_segment_probabilities, length, numeric(1))
-  # first_nonzero = ifelse(is.finite(first_non))
   nonzero_start = sum(first_nonzero) - length(first_nonzero)
-  by_segment_probabilities = lapply(seq_along(by_segment_probabilities), function(i) by_segment_probabilities[[i]][first_nonzero[i]:lengths[i]])
+  nonzero_end = sum(last_nonzero != lengths)
+  by_segment_probabilities = lapply(seq_along(by_segment_probabilities), function(i) by_segment_probabilities[[i]][first_nonzero[i]:last_nonzero[i]])
   no_exchange_probability = prod(sapply(by_segment_probabilities, function(x) x[1]))
   num_exchangeable_complete = num_exchangeable
-  num_exchangeable = num_exchangeable_complete - nonzero_start
+  num_exchangeable = num_exchangeable_complete - nonzero_start - nonzero_end
   power_sums = lapply(by_segment_probabilities, function(x) {
     power_sums = vector("numeric", num_exchangeable + 1)
     power_sums[1] = no_exchange_probability
@@ -357,9 +358,9 @@ getExchangeProbabilities = function(by_segment_probabilities,
   probabilities = lapply(polynomials, Re)
   probabilities = c(no_exchange_probability, probabilities)
   probabilities = unlist(probabilities, FALSE, FALSE)
-  # or setDT(list())
+  
   list(NumExchanged = 0:num_exchangeable_complete,
-       Probability = c(rep(0, nonzero_start), probabilities))
+       Probability = c(rep(0, nonzero_start), probabilities, rep(0, nonzero_end)))
 }
 
 #' @keywords internal
