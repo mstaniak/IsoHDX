@@ -90,15 +90,16 @@ getFinalSolution = function(method,
                             peptide_segment_structure, num_parameters,
                             time_0_data,
                             undeuterated_dists,
-                            max_iter) {
+                            max_iter,
+                            tolerance = 1e-2) {
   if (method != "OLS") {
     initial_solution = starting_point
     current_solution = ols_solution$par
     current_parameters = current_solution
     
     iter = 1
-    while(iter <= max_iter & max(abs(initial_solution - current_solution) / abs(initial_solution)) >= 1e-2) {
-      print(iter)
+    while(iter <= max_iter & max(abs(initial_solution - current_solution) / abs(initial_solution)) >= tolerance) {
+      print(paste("Iteration: ", iter, ",", "relative difference:", max(abs(initial_solution - current_solution) / abs(initial_solution))))
       current_weights = getCurrentWeights(current_solution, observed_spectra, peptide_segment_structure, num_parameters, undeuterated_dists)
       current_theta = getCurrentTheta(current_solution, observed_spectra, current_weights, peptide_segment_structure, num_parameters, undeuterated_dists)
       

@@ -14,7 +14,7 @@ getOptimizationProblem = function(observed_spectra,
                                   peptides_cluster,
                                   time_0_data, undeuterated_dists,
                                   weights = NULL, theta = 1) {
-  times = unique(observed_spectra$time)
+  times = unique(observed_spectra$Time)
   segments = unique(peptides_cluster[, .(Segment, MaxUptake)])
   peptides_cluster[, Present := 1]
   ps_m = data.table::dcast(peptides_cluster, Peptide ~ Segment, value.var = "Present", fill = 0)
