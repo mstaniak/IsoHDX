@@ -17,7 +17,8 @@ fitIsoSegmentModel = function(observed_spectra,
                               starting_point = NULL,
                               method = "OLS",
                               use_analytical_gradient = TRUE,
-                              max_iter = 100) {
+                              max_iter = 100,
+                              tolerance = 1e-2) {
   ols_optim_problem = getOptimizationProblem(observed_spectra, peptides_cluster, 
                                              time_0_data, undeuterated_dists,
                                              weights = NULL, theta = 1)
@@ -36,7 +37,8 @@ fitIsoSegmentModel = function(observed_spectra,
                                     peptide_segment_structure, num_parameters,
                                     time_0_data,
                                     undeuterated_dists,
-                                    max_iter)
+                                    max_iter,
+                                    tolerance)
   plgls_solution
 }
 
@@ -91,7 +93,7 @@ getFinalSolution = function(method,
                             time_0_data,
                             undeuterated_dists,
                             max_iter,
-                            tolerance = 1e-2) {
+                            tolerance) {
   if (method != "OLS") {
     initial_solution = starting_point
     current_solution = ols_solution$par

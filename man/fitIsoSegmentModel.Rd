@@ -12,7 +12,8 @@ fitIsoSegmentModel(
   starting_point = NULL,
   method = "OLS",
   use_analytical_gradient = TRUE,
-  max_iter = 100
+  max_iter = 100,
+  tolerance = 0.01
 )
 }
 \arguments{
