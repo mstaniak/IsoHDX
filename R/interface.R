@@ -80,7 +80,8 @@ getAnalyticalGradient = function(use_analytical_gradient, observed_spectra,
 
 getOptimProblemSolution = function(starting_point, optim_problem, analytical_gradient) {
   solution = optim(starting_point, optim_problem, gr = analytical_gradient,
-                   method = "BFGS")
+                   method = "L-BFGS-B", lower = rep(-Inf, length(starting_point)),
+                   upper = c(Inf, rep(0, length(starting_point) - 1)))
   solution # todo: better processing
 }
 
@@ -115,7 +116,9 @@ getFinalSolution = function(method,
       
       current_optimized = optim(current_solution, current_optim_problem, 
                                 gr = l2l,
-                                method = "BFGS")
+                                method = "L-BFGS-B",
+                                lower = rep(-Inf, length(current_solution)),
+                                upper = c(Inf, rep(0, length(current_solution) - 1)))
       initial_solution = current_solution
       current_solution = current_optimized$par
       iter = iter + 1
@@ -128,7 +131,9 @@ getFinalSolution = function(method,
     }
     optimized = c(current_optimized, converged = !(max(abs(initial_solution - current_solution) / abs(initial_solution)) >= 1e-2), num_iter = iter - 1,
                   weights = current_weights, theta = current_theta)
-    result = makeModelFittingOutput(observed_spectra, time_0_data, undeuterated_dists,
+    result = makeModelFittingOutput(observed_spectra, 
+                                    peptides_cluster,
+                                    time_0_data, undeuterated_dists,
                                     peptide_segment_structure, num_parameters,
                                     optimized[["par"]], optimized[["theta"]], 
                                     optimized)
@@ -144,7 +149,9 @@ getFinalSolution = function(method,
   }
 }
 
-makeModelFittingOutput = function(observed_spectra, time_0_data, undeuterated_dists,
+makeModelFittingOutput = function(observed_spectra, 
+                                  peptides_cluster,
+                                  time_0_data, undeuterated_dists,
                                   peptide_segment_structure,
                                   num_parameters, parameters, theta, optim_output) {
   peptides = peptide_segment_structure[["Peptide"]]
