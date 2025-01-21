@@ -18,7 +18,9 @@ fitIsoSegmentModel = function(observed_spectra,
                               method = "OLS",
                               use_analytical_gradient = TRUE,
                               max_iter = 100,
-                              tolerance = 1e-2) {
+                              tolerance = 1e-2,
+                              constrained = TRUE,
+                              max_optim_iters = 100) {
   ols_optim_problem = getOptimizationProblem(observed_spectra, peptides_cluster, 
                                              time_0_data, undeuterated_dists,
                                              weights = NULL, theta = 1)
@@ -29,7 +31,9 @@ fitIsoSegmentModel = function(observed_spectra,
                                        peptides_cluster, peptide_segment_structure,
                                        num_parameters, time_0_data, undeuterated_dists,
                                        weights = NULL, theta = 1)
-  ols_solution = getOptimProblemSolution(starting_point, ols_optim_problem, analytical_gradient) # todo: handle non-convergence
+  ols_solution = getOptimProblemSolution(starting_point, ols_optim_problem, analytical_gradient, num_parameters, constrained,
+                                         max_optim_iters) # todo: handle non-convergence
+  # ols_solution = NULL
   plgls_solution = getFinalSolution(method, use_analytical_gradient,
                                     starting_point, ols_solution,
                                     observed_spectra, 
@@ -38,7 +42,9 @@ fitIsoSegmentModel = function(observed_spectra,
                                     time_0_data,
                                     undeuterated_dists,
                                     max_iter,
-                                    tolerance)
+                                    tolerance,
+                                    constrained,
+                                    max_optim_iters)
   plgls_solution
 }
 
@@ -78,10 +84,24 @@ getAnalyticalGradient = function(use_analytical_gradient, observed_spectra,
   } 
 }
 
-getOptimProblemSolution = function(starting_point, optim_problem, analytical_gradient) {
-  solution = optim(starting_point, optim_problem, gr = analytical_gradient,
-                   method = "L-BFGS-B", lower = rep(-Inf, length(starting_point)),
-                   upper = c(Inf, rep(0, length(starting_point) - 1)))
+getOptimProblemSolution = function(starting_point, optim_problem, 
+                                   analytical_gradient, 
+                                   num_parameters, constrained,
+                                   max_optim_iters) {
+  if (constrained) {
+    lower_constr = rep(-Inf, length(starting_point))
+    upper_constr = rep(0, length(starting_point))
+    int_inds = cumsum(c(1, num_parameters + 1))
+    int_inds = int_inds[-length(int_inds)]
+    upper_constr[int_inds] = Inf
+    
+    solution = optim(starting_point, optim_problem, gr = analytical_gradient,
+                     method = "L-BFGS-B", lower = lower_constr,
+                     upper = upper_constr, control = list(maxit = max_optim_iters))
+  } else {
+    solution = optim(starting_point, optim_problem, gr = analytical_gradient,
+                     method = "BFGS", control = list(maxit = max_optim_iters))
+  }
   solution # todo: better processing
 }
 
@@ -94,15 +114,21 @@ getFinalSolution = function(method,
                             time_0_data,
                             undeuterated_dists,
                             max_iter,
-                            tolerance) {
+                            tolerance,
+                            constrained,
+                            max_optim_iters) {
   if (method != "OLS") {
-    initial_solution = starting_point
-    current_solution = ols_solution$par
+    # initial_solution = starting_point
+    # current_solution = ols_solution$par
+    initial_solution = rep(0, length(starting_point))
+    current_solution = starting_point
     current_parameters = current_solution
+    sols_ratio = abs(initial_solution - current_solution)/max(abs(initial_solution), 1e-6)
+    # sols_ratio = sols_ratio[is.finite(sols_ratio)]
     
     iter = 1
-    while(iter <= max_iter & max(abs(initial_solution - current_solution) / abs(initial_solution)) >= tolerance) {
-      print(paste("Iteration: ", iter, ",", "relative difference:", max(abs(initial_solution - current_solution) / abs(initial_solution))))
+    while(iter <= max_iter & max(sols_ratio) >= tolerance) {
+      print(paste("Iteration: ", iter, ",", "relative difference:", max(sols_ratio)))
       current_weights = getCurrentWeights(current_solution, observed_spectra, peptide_segment_structure, num_parameters, undeuterated_dists)
       current_theta = getCurrentTheta(current_solution, observed_spectra, current_weights, peptide_segment_structure, num_parameters, undeuterated_dists)
       
@@ -114,13 +140,30 @@ getFinalSolution = function(method,
                                   num_parameters, time_0_data, undeuterated_dists,
                                   current_weights, current_theta)
       
-      current_optimized = optim(current_solution, current_optim_problem, 
-                                gr = l2l,
-                                method = "L-BFGS-B",
-                                lower = rep(-Inf, length(current_solution)),
-                                upper = c(Inf, rep(0, length(current_solution) - 1)))
+      if (constrained) {
+        lower_constr = rep(-Inf, length(starting_point))
+        upper_constr = rep(0, length(starting_point))
+        int_inds = cumsum(c(1, num_parameters + 1))
+        int_inds = int_inds[-length(int_inds)]
+        upper_constr[int_inds] = Inf
+        
+        current_optimized = optim(current_solution, current_optim_problem,
+                                  gr = l2l,
+                                  method = "L-BFGS-B",
+                                  lower = lower_constr,
+                                  upper = upper_constr,
+                                  control = list(maxit = max_optim_iters))
+      } else {
+        current_optimized = optim(current_solution, current_optim_problem,
+                                  gr = l2l,
+                                  method = "BFGS",
+                                  control = list(maxit = max_optim_iters))
+      }
       initial_solution = current_solution
       current_solution = current_optimized$par
+      sols_ratio = abs(initial_solution - current_solution)/max(abs(initial_solution), 1e-6)
+      # sols_ratio = sols_ratio[is.finite(sols_ratio)]
+      
       iter = iter + 1
     }
     
@@ -161,26 +204,27 @@ makeModelFittingOutput = function(observed_spectra,
   seg_probs_final = getSegmentProbabilitiesFromParams(seg_pars_final, time_points)
   pept_probs_final = getPeptideProbabilities(peptide_segment_structure, seg_probs_final)
   
-  final_peak_ders = getFinalPeakDerivatives(observed_spectra,
-                                            peptides_cluster,
-                                            peptide_segment_structure,
-                                            num_parameters,
-                                            time_0_data,
-                                            undeuterated_dists,
-                                            parameters)
+  # final_peak_ders = getFinalPeakDerivatives(observed_spectra,
+  #                                           peptides_cluster,
+  #                                           peptide_segment_structure,
+  #                                           num_parameters,
+  #                                           time_0_data,
+  #                                           undeuterated_dists,
+  #                                           parameters)
   
   final_theoretical_spectra = getExpectedSpectra(parameters, peptide_segment_structure, num_parameters + 1, observed_spectra, undeuterated_dists)
   final_comparison = merge(observed_spectra, final_theoretical_spectra,
                         by = c("Peptide", "Time", "IntDiff"),
                         sort = FALSE)
   
-  probs_with_conf_ints = getProbabilitiesConfidenceIntervals(final_comparison, 
-                                                             final_peak_ders, 
-                                                             peptide_segment_structure, 
-                                                             parameters, 
-                                                             num_parameters, theta)
+  # probs_with_conf_ints = getProbabilitiesConfidenceIntervals(final_comparison, 
+  #                                                            final_peak_ders, 
+  #                                                            peptide_segment_structure, 
+  #                                                            parameters, 
+  #                                                            num_parameters, theta)
   list(FinalComparison = final_comparison,
-       FittedProbabilities = probs_with_conf_ints,
+       FittedProbabilities = NULL,
+       # FittedProbabilities = probs_with_conf_ints,
        OptimizationResult = optim_output) # Todo: optimization history
 }
 

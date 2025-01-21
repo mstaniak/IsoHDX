@@ -104,19 +104,16 @@ getExpectedSpectra = function(parameters,
   times = unique(observed_spectra$Time)
   params_by_seq = getSegmentParametersFromBetas(parameters, param_counts)
   probs_by_time_seg = getSegmentProbabilitiesFromParams(params_by_seq, times)
-  probs_by_time_seg = lapply(probs_by_time_seg, function(x) lapply(x, function(y) {
-    y = ifelse(is.nan(y), (1 - sum(y[!is.nan(y)])) / sum(is.nan(y)), y)
-    y = y / sum(y)
-    y
-  }))
   pept_probs = getPeptideProbabilities(pept_seg_struct, probs_by_time_seg)
+  peptides = pept_seg_struct[["Peptide"]]
   
-  rbindlist(lapply(seq_along(pept_probs), function(ith_time) {
+  data.table::rbindlist(lapply(seq_along(pept_probs), function(ith_time) {
     probs_in_time = pept_probs[[ith_time]]
-    rbindlist(lapply(seq_along(probs_in_time), function(ith_peptide) {
+    data.table::rbindlist(lapply(seq_along(probs_in_time), function(ith_peptide) {
       probs = probs_in_time[[ith_peptide]]
+      total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide], sum(Intensity)]
       undeuterated_probs = undeuterated_dists[[unique(pept_seg_struct$Peptide[ith_peptide])]]
-      peaks_heights = getExpectedPeakHeights(1, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
+      peaks_heights = getExpectedPeakHeights(total, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
       list(Peptide = unique(pept_seg_struct$Peptide[ith_peptide]),
            Time = times[ith_time],
            IntDiff = 0:(length(peaks_heights) - 1),
@@ -133,7 +130,9 @@ getProbabilitiesFromBetas = function(betas, time) {
   total = sum(exp(betas * time + intercept)) + 1
   probs = exp(betas * time + intercept) / total
   probs = c(probs, 1 - sum(probs))
-  if (any(is.nan(probs))) browser()
+  # if (any(is.nan(probs))) browser()
+  if (any(is.nan(probs) | is.na(probs) | !is.finite(probs))) stop("illegal probabilities")
+  # if (any(is.nan(probs) | is.na(probs) | !is.finite(probs))) browser()
   probs
 }
 
@@ -410,11 +409,17 @@ get_derivative = function(betas_segment, time, l, j, n_k) {
 getCurrentWeights = function(current_parameters, observed_spectra, pept_seg_struct, num_parameters, undeuterated_dists) {
   expected_spectra = getExpectedSpectra(current_parameters, pept_seg_struct,
                                         num_parameters + 1, observed_spectra, undeuterated_dists)
-  expected_spectra = expected_spectra[ExpectedPeak > 0 & !is.na(ExpectedPeak)]
-  prod = (1 / nrow(expected_spectra)) * sum(log(expected_spectra$ExpectedPeak))
-  grand_mean = exp(prod)
-  expected_spectra[, Weight := grand_mean / (ExpectedPeak)]
-  expected_spectra[, ExpectedPeak := NULL]
+  # expected_spectra = expected_spectra[ExpectedPeak > 0 & !is.na(ExpectedPeak)]
+  # prod = (1 / nrow(expected_spectra)) * sum(log(expected_spectra$ExpectedPeak))
+  # grand_mean = exp(prod)
+  # expected_spectra[, Weight := grand_mean / (ExpectedPeak)]
+  # expected_spectra[, ExpectedPeak := NULL]
+  # expected_spectra
+  expected_spectra[, ExpectedPeak := ifelse(ExpectedPeak < 1e-6, 1e-6, ExpectedPeak)]
+  prod_filt = (1/nrow(expected_spectra)) * sum(log(expected_spectra$ExpectedPeak))
+  grand_mean_filt = exp(prod_filt)
+  expected_spectra[, `:=`(Weight, grand_mean_filt/(ExpectedPeak))]
+  expected_spectra[, `:=`(ExpectedPeak, NULL)]
   expected_spectra
 }
 

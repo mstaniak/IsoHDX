@@ -22,7 +22,8 @@ names(undeuterated_dists) = peptides
 
 seg_probs = IsoHDX:::getSegmentProbabilitiesFromParams(list(c(0, 0)), 1)
 
-observed_spectra_fake = data.table::data.table(Time = 1,
+observed_spectra_fake = data.table::data.table(Peptide = "DK",
+                                               Time = 1,
                                                Charge = 2,
                                                Intensity = 1,
                                                Merge = T)
@@ -67,7 +68,8 @@ names(undeuterated_dists) = peptides
 
 seg_probs = IsoHDX:::getSegmentProbabilitiesFromParams(list(c(-0.5, -0.2)), c(1, 2))
 
-observed_spectra_fake = data.table::data.table(Time = 1:2,
+observed_spectra_fake = data.table::data.table(Peptide = "DK",
+                                               Time = 1:2,
                                                Charge = 2,
                                                Intensity = 1,
                                                Merge = T)
@@ -255,3 +257,7 @@ res_close_noise = IsoHDX:::fitIsoSegmentModel(sim_spectra3, peptides_cluster, ti
 
 tinytest::expect_true(mean((res_rand_noise$OptimizationResult$par - betas)^2) > mean((res_close_noise$OptimizationResult$par - betas)^2))
 
+# ggplot(sim_spectra3, aes(x = IntDiff, ymin = 0, ymax = Intensity)) +
+#   geom_linerange() +
+#   facet_grid(Peptide ~ Time) +
+#   theme_bw()
