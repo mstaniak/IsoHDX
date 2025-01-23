@@ -103,6 +103,7 @@ getExpectedSpectra = function(parameters,
                               undeuterated_dists) {
   times = unique(observed_spectra$Time)
   params_by_seq = getSegmentParametersFromBetas(parameters, param_counts)
+  params_by_seq = lapply(params_by_seq, function(x) x - max(x))
   probs_by_time_seg = getSegmentProbabilitiesFromParams(params_by_seq, times)
   pept_probs = getPeptideProbabilities(pept_seg_struct, probs_by_time_seg)
   peptides = pept_seg_struct[["Peptide"]]
