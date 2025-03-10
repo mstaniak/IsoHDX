@@ -1,4 +1,4 @@
-Package: IsoHDX
+Package: IsoHDX3
 Title: Tools For Isotopic Distribution-Based High Resolution Analysis of HDX Data
 Version: 0.0.0.9000
 Authors@R: 
@@ -14,11 +14,11 @@ RoxygenNote: 7.3.2
 Imports: 
     BRAIN,
     data.table,
+    polynom,
     pracma
 Suggests: 
     knitr,
     Peptides,
-    polynom,
     rmarkdown,
     tinytest
 VignetteBuilder: knitr

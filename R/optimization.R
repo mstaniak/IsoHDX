@@ -89,8 +89,14 @@ getPeptideProbabilities = function(pept_seg_struct, segment_probs) {
     lapply(seq_len(nrow(pept_seg_struct)), function(ith_row) {
       segments = as.logical(unlist(pept_seg_struct[ith_row, colnames(pept_seg_struct) != "Peptide", with = FALSE]))
       pept_segments = probs_in_time[segments]
+      polynoms = polynom::as.polylist(pept_segments)
+      conv_polynoms = coef(prod(polynoms))
       num_exchangeable = sum(sapply(pept_segments, length)) - length(pept_segments)
-      getExchangeProbabilities(pept_segments, num_exchangeable)
+      max_nonzero = length(conv_polynoms)
+      extra_zeros = rep(0.0, num_exchangeable + 1 - max_nonzero)
+      
+      list(NumExchanged = 0:num_exchangeable,
+           Probability = c(conv_polynoms, extra_zeros))
     })
   })
 }
@@ -318,49 +324,21 @@ get_analytical_gradient_loss = function(observed_spectra, peptides_cluster,
 getExchangeProbabilities = function(by_segment_probabilities,
                                     num_exchangeable,
                                     approximate_root = FALSE) {
-  first_nonzero = vapply(by_segment_probabilities, function(x) min(which(x >= 1e-8)), numeric(1))
-  last_nonzero = vapply(by_segment_probabilities, function(x) max(which(abs(x) >= 1e-8)), numeric(1))
-  lengths = vapply(by_segment_probabilities, length, numeric(1))
-  nonzero_start = sum(first_nonzero) - length(first_nonzero)
-  nonzero_end = sum(last_nonzero != lengths)
-  by_segment_probabilities = lapply(seq_along(by_segment_probabilities), function(i) by_segment_probabilities[[i]][first_nonzero[i]:last_nonzero[i]])
-  no_exchange_probability = prod(sapply(by_segment_probabilities, function(x) x[1]))
-  num_exchangeable_complete = num_exchangeable
-  num_exchangeable = num_exchangeable_complete - nonzero_start - nonzero_end
-  power_sums = lapply(by_segment_probabilities, function(x) {
-    power_sums = vector("numeric", num_exchangeable + 1)
-    power_sums[1] = no_exchange_probability
-    coefs = c(x, rep(0, num_exchangeable + 1 - length(x)))
+  lapply(by_segment_probabilities, function(pept_segments) {
+    # lapply(seq_len(nrow(pept_seg_struct)), function(ith_row) {
+    #   segments = as.logical(unlist(pept_seg_struct[ith_row, colnames(pept_seg_struct) != "Peptide", with = FALSE]))
+    #   pept_segments = probs_in_time[segments]
+    polynoms = polynom::as.polylist(pept_segments)
+    conv_polynoms = coef(prod(polynoms))
+    # num_exchangeable = sum(sapply(pept_segments, length)) - length(pept_segments)
+    max_nonzero = length(conv_polynoms)
+    extra_zeros = rep(0.0, num_exchangeable + 1 - max_nonzero)
     
-    for (i in 2:(num_exchangeable + 1)) {
-      if (i <= length(x)) {
-        if (i == 2) {
-          power_sums[i] = -(i - 1) * coefs[i] / coefs[i - 1] 
-        } else {
-          power_sums[i] = ((-(i - 1) * coefs[i]) - sum(rev(coefs[2:(i - 1)]) * power_sums[2:(i - 1)])) / coefs[1]
-        }
-      } else {
-        power_sums[i] = -sum(rev(coefs[2:(i - 1)]) * power_sums[2:(i - 1)]) / coefs[1]
-      }
-    }
-    power_sums
+    list(NumExchanged = 0:num_exchangeable,
+         Probability = c(conv_polynoms, extra_zeros))
+    # })
   })
-  roots_list = colSums(matrix(unlist(power_sums), nrow = length(power_sums), byrow = T))[-1]
   
-  polynomials = vector("list", num_exchangeable)
-  for (i in seq_len(num_exchangeable)) {
-    if (i == 1) {
-      polynomials[[i]] = - no_exchange_probability * roots_list[1]
-    } else {
-      polynomials[[i]] = (-1 / i) * sum(rev(c(no_exchange_probability, unlist(polynomials[1:(i - 1)], FALSE, FALSE))) * roots_list[1:i])
-    }
-  }
-  probabilities = lapply(polynomials, Re)
-  probabilities = c(no_exchange_probability, probabilities)
-  probabilities = unlist(probabilities, FALSE, FALSE)
-  
-  list(NumExchanged = 0:num_exchangeable_complete,
-       Probability = c(rep(0, nonzero_start), probabilities, rep(0, nonzero_end)))
 }
 
 #' @keywords internal
