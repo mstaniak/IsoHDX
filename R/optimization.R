@@ -119,9 +119,9 @@ getExpectedSpectra = function(parameters,
     data.table::rbindlist(lapply(seq_along(probs_in_time), function(ith_peptide) {
       probs = probs_in_time[[ith_peptide]]
       total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide], sum(Intensity)]
-      undeuterated_probs = undeuterated_dists[[unique(pept_seg_struct$Peptide[ith_peptide])]]
+      undeuterated_probs = undeuterated_dists[[as.character(unique(pept_seg_struct$Peptide)[ith_peptide])]]
       peaks_heights = getExpectedPeakHeights(total, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
-      list(Peptide = unique(pept_seg_struct$Peptide[ith_peptide]),
+      list(Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
            Time = times[ith_time],
            IntDiff = 0:(length(peaks_heights) - 1),
            ExpectedPeak = peaks_heights)
