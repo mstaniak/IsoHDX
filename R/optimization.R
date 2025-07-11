@@ -133,10 +133,13 @@ getExpectedSpectra = function(parameters,
 getProbabilitiesFromBetas = function(betas, time) {
   intercept = betas[1]
   betas = betas[-1]
+  # betas[-length(betas)] = -exp(betas[-length(betas)])
+  betas[length(betas)] = exp(betas[length(betas)])
   # betas = betas - max(betas) 
   total = sum(exp(betas * time + intercept)) + 1
   probs = exp(betas * time + intercept) / total
-  probs = c(probs, 1 - sum(probs))
+  # probs = c(1 - sum(probs), probs)
+  probs = c(1 / total, probs)
   # if (any(is.nan(probs))) browser()
   if (any(is.nan(probs) | is.na(probs) | !is.finite(probs))) stop("illegal probabilities")
   # if (any(is.nan(probs) | is.na(probs) | !is.finite(probs))) browser()
