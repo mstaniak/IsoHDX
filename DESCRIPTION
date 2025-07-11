@@ -1,4 +1,4 @@
-Package: IsoHDX3
+Package: IsoHDX3noint
 Title: Tools For Isotopic Distribution-Based High Resolution Analysis of HDX Data
 Version: 0.0.0.9000
 Authors@R: 
