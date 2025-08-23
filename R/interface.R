@@ -55,7 +55,7 @@ getParametersCounts = function(peptides_cluster) {
 
 getStartingPoint = function(starting_point, num_parameters) {
   if (is.null(starting_point)) {
-    starting_point = runif(num_parameters, -1e-3, -1e-5)
+    starting_point = runif(num_parameters, -9e-1, -1e-3)
   }
   starting_point
 }

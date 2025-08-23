@@ -27,16 +27,21 @@ getOptimizationProblem = function(observed_spectra,
                                              num_parameters + 1,
                                              observed_spectra,
                                              undeuterated_dists)
+    if (is.element("Rep", colnames(observed_spectra))) {
+      comp_vars = c("Peptide", "Time", "IntDiff", "Rep")
+    } else {
+      comp_vars = c("Peptide", "Time", "IntDiff")
+    }
     
     compare = merge(theoretical_spectra,
                     observed_spectra,
-                    by = c("Peptide", "Time", "IntDiff"),
+                    by = comp_vars,
                     all.x = T, all.y = T)
     # compare[, ExpectedPeak := ifelse(is.na(ExpectedPeak), 0, ExpectedPeak)] # based on comments in the draft
     # compare[, Intensity := ifelse(is.na(Intensity), 0, Intensity)] # based on comments in the draft
     if (!is.null(weights)) {
       compare = merge(compare, weights,
-                      by = c("Peptide", "Time", "IntDiff"),
+                      by = comp_vars, # TODO: weights for multirep!
                       # by = c("Peptide", "Charge", "Time", "IntDiff"),
                       all.x = T, all.y = T)
       sum( ((compare[["Weight"]] ^ theta) * (compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2,
@@ -118,13 +123,25 @@ getExpectedSpectra = function(parameters,
     probs_in_time = pept_probs[[ith_time]]
     data.table::rbindlist(lapply(seq_along(probs_in_time), function(ith_peptide) {
       probs = probs_in_time[[ith_peptide]]
-      total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide], sum(Intensity)]
       undeuterated_probs = undeuterated_dists[[as.character(unique(pept_seg_struct$Peptide)[ith_peptide])]]
-      peaks_heights = getExpectedPeakHeights(total, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
-      list(Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
-           Time = times[ith_time],
-           IntDiff = 0:(length(peaks_heights) - 1),
-           ExpectedPeak = peaks_heights)
+      if (is.element("Rep", colnames(observed_spectra))) {
+        reps = unique(observed_spectra[["Rep"]])
+        unscaled_spectrum = getExpectedPeakHeights(1, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
+        data.table::rbindlist(lapply(reps, function(rep) {
+          total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide] & Rep == rep, sum(Intensity)]
+          list(Rep = rep,
+               Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
+               Time = times[ith_time],
+               IntDiff = 0:(length(unscaled_spectrum) - 1),
+               ExpectedPeak = total * unscaled_spectrum)
+        })) } else {
+          total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide], sum(Intensity)]
+          peaks_heights = getExpectedPeakHeights(total, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
+          list(Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
+               Time = times[ith_time],
+               IntDiff = 0:(length(peaks_heights) - 1),
+               ExpectedPeak = peaks_heights)
+        }
     }))
   }))
 }
@@ -567,4 +584,54 @@ getExpectedSegmentProbabilitiesTable = function(spectra,
       })
     })
   data.table::rbindlist(unlist(expected_peak_heights, F, F))
+}
+
+
+#' Create optimization problem to estimate segment-specific exchange rates via OLS using L-M alg.
+#' 
+#' @param observed_spectra data.table with observed isotopic distributions
+#' @param peptides_cluster data.table with information about peptides cluster
+#' @param time_0_data data.table with information about isotopic distributions of 
+#' undeuterated peptides
+#' @param weights optional data.table with weights for each time point, peptide and isotopic peak
+#' @param theta optional scalar variance parameter (see more in the Details section)
+#' 
+#' @import data.table
+#' @export
+#' 
+getLenMarqOptimizationProblem = function(observed_spectra,
+                                         peptides_cluster,
+                                         time_0_data, undeuterated_dists,
+                                         weights = NULL, theta = 1) {
+  times = unique(observed_spectra$Time)
+  segments = unique(peptides_cluster[, .(Segment, MaxUptake)])
+  peptides_cluster[, Present := 1]
+  ps_m = data.table::dcast(peptides_cluster, Peptide ~ Segment, value.var = "Present", fill = 0)
+  ps_m = ps_m[, c("Peptide", as.character(segments$Segment)), with = FALSE]
+  num_parameters = segments[["MaxUptake"]]
+  
+  function(parameters) {
+    theoretical_spectra = getExpectedSpectra(parameters,
+                                             ps_m,
+                                             num_parameters + 1,
+                                             observed_spectra,
+                                             undeuterated_dists)
+    
+    compare = merge(theoretical_spectra,
+                    observed_spectra,
+                    by = c("Peptide", "Time", "IntDiff"),
+                    all.x = T, all.y = T)
+    # compare[, ExpectedPeak := ifelse(is.na(ExpectedPeak), 0, ExpectedPeak)] # based on comments in the draft
+    # compare[, Intensity := ifelse(is.na(Intensity), 0, Intensity)] # based on comments in the draft
+    # if (!is.null(weights)) {
+    #   compare = merge(compare, weights,
+    #                   by = c("Peptide", "Time", "IntDiff"),
+    #                   # by = c("Peptide", "Charge", "Time", "IntDiff"),
+    #                   all.x = T, all.y = T)
+    #   sum( ((compare[["Weight"]] ^ theta) * (compare[["Intensity"]] - compare[["ExpectedPeak"]])) ^ 2,
+    #        na.rm = TRUE)
+    # } else {
+    compare[["Intensity"]] - compare[["ExpectedPeak"]]
+    # }
+  }
 }
