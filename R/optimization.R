@@ -123,25 +123,30 @@ getExpectedSpectra = function(parameters,
     probs_in_time = pept_probs[[ith_time]]
     data.table::rbindlist(lapply(seq_along(probs_in_time), function(ith_peptide) {
       probs = probs_in_time[[ith_peptide]]
-      undeuterated_probs = undeuterated_dists[[as.character(unique(pept_seg_struct$Peptide)[ith_peptide])]]
-      if (is.element("Rep", colnames(observed_spectra))) {
-        reps = unique(observed_spectra[["Rep"]])
-        unscaled_spectrum = getExpectedPeakHeights(1, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
-        data.table::rbindlist(lapply(reps, function(rep) {
-          total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide] & Rep == rep, sum(Intensity)]
-          list(Rep = rep,
-               Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
-               Time = times[ith_time],
-               IntDiff = 0:(length(unscaled_spectrum) - 1),
-               ExpectedPeak = total * unscaled_spectrum)
-        })) } else {
-          total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide], sum(Intensity)]
-          peaks_heights = getExpectedPeakHeights(total, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
-          list(Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
-               Time = times[ith_time],
-               IntDiff = 0:(length(peaks_heights) - 1),
-               ExpectedPeak = peaks_heights)
-        }
+      undeuterated_probs = undeuterated_dists[[as.character(peptides[ith_peptide])]]
+      data.table::rbindlist(lapply(observed_spectra[Peptide == peptides[ith_peptide], unique(Charge)], function(charge) {
+        if (is.element("Rep", colnames(observed_spectra))) {
+          reps = unique(observed_spectra[["Rep"]])
+          unscaled_spectrum = getExpectedPeakHeights(1, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
+          data.table::rbindlist(lapply(reps, function(rep) {
+            total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide] & Rep == rep, sum(Intensity)]
+            list(Rep = rep,
+                 Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
+                 Charge = charge,
+                 Time = times[ith_time],
+                 IntDiff = 0:(length(unscaled_spectrum) - 1),
+                 ExpectedPeak = total * unscaled_spectrum)
+          })) } else {
+            total = observed_spectra[Time == times[ith_time] & Peptide == peptides[ith_peptide], sum(Intensity)]
+            peaks_heights = getExpectedPeakHeights(total, probs$Probability, undeuterated_probs, max(probs$NumExchanged))
+            list(Peptide = unique(pept_seg_struct$Peptide)[ith_peptide],
+                 Charge = charge,
+                 Time = times[ith_time],
+                 IntDiff = 0:(length(peaks_heights) - 1),
+                 ExpectedPeak = peaks_heights)
+          }
+      }))
+
     }))
   }))
 }
